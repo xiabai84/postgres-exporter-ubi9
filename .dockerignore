@@ -1,0 +1,58 @@
+# .dockerignore — air-gap build
+# -----------------------------------------------------------------------
+# IMPORTANT: src/ and src/vendor/ MUST be included in the build context.
+# The Dockerfile copies src/ entirely (COPY src/ /build/) and builds with
+# -mod=vendor.  Do NOT add src/ or vendor/ patterns to this file.
+# -----------------------------------------------------------------------
+
+# ── Version control ───────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── CI / pipeline configs ─────────────────────────────────────────────
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+.circleci/
+.tekton/
+
+# ── Local tooling and IDE ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Local build artefacts ─────────────────────────────────────────────
+# NOTE: Do NOT add vendor/ here — src/vendor/ is required for the build.
+.build/
+dist/
+bin/
+
+# ── Documentation ─────────────────────────────────────────────────────
+# README.md is excluded from the image (it is not used at runtime).
+# The src/ subdirectory has its own docs; those are included as part of
+# the COPY src/ instruction but discarded after compilation.
+README.md
+docs/
+LICENSE*
+
+# ── Secrets — defence in depth ────────────────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+secrets/
+credentials/
+kubeconfig
+*.kubeconfig
+
+# ── Build helpers (not needed inside the image) ───────────────────────
+build.sh
+scripts/
+Makefile
+docker-compose*.yml
