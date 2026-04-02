@@ -75,8 +75,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 UPSTREAM_URL="https://github.com/prometheus-community/postgres_exporter/archive/refs/tags/v${VERSION}.tar.gz"
-TARBALL="$(mktemp /tmp/postgres_exporter-XXXXXX.tar.gz)"
-trap 'rm -f "${TARBALL}"' EXIT
+TMPFILE="$(mktemp /tmp/postgres_exporter-XXXXXX)"
+TARBALL="${TMPFILE}.tar.gz"
+trap 'rm -f "${TMPFILE}" "${TARBALL}"' EXIT
 
 # ── Pre-flight checks ─────────────────────────────────────────────────────────
 for cmd in curl tar go git; do
@@ -102,10 +103,12 @@ echo "   Size:     $(du -sh "${TARBALL}" | cut -f1)"
 
 # Verify checksum if a .sha256 sidecar exists on GitHub releases
 CHECKSUM_URL="https://github.com/prometheus-community/postgres_exporter/releases/download/v${VERSION}/sha256sums.txt"
-if CHECKSUMS="$(curl -fsSL "${CHECKSUM_URL}" 2>/dev/null)"; then
-  EXPECTED="$(echo "${CHECKSUMS}" | grep "postgres_exporter-${VERSION}.tar.gz" | awk '{print $1}')"
+CHECKSUMS="$(curl -fsSL "${CHECKSUM_URL}" 2>/dev/null || true)"
+if [[ -n "${CHECKSUMS}" ]]; then
+  EXPECTED="$(echo "${CHECKSUMS}" | grep "postgres_exporter-${VERSION}.tar.gz" | awk '{print $1}' || true)"
   if [[ -n "${EXPECTED}" ]]; then
-    ACTUAL="$(shasum -a 256 "${TARBALL}" | awk '{print $1}')"
+    ACTUAL="$(sha256sum "${TARBALL}" 2>/dev/null || shasum -a 256 "${TARBALL}" | awk '{print $1}')"
+    ACTUAL="$(echo "${ACTUAL}" | awk '{print $1}')"
     if [[ "${ACTUAL}" != "${EXPECTED}" ]]; then
       echo "ERROR: SHA-256 checksum mismatch!" >&2
       echo "  expected: ${EXPECTED}" >&2
