@@ -42,12 +42,16 @@ Options:
   --scan             Run Trivy CVE scan after build
   --no-cache         Pass --no-cache to docker build
   --file     <path>  Path to Dockerfile (default: ./Dockerfile)
+  --base-image <ref> Builder base image (default: registry.access.redhat.com/ubi9/ubi-minimal:latest)
+  --runtime-image <ref> Runtime base image (default: registry.access.redhat.com/ubi9/ubi-micro:latest)
   -h | --help        Print this help
 
 Examples:
   ./scripts/build.sh
   ./scripts/build.sh --version 0.19.1 --arch arm64
   ./scripts/build.sh --registry quay.io/myorg --push --scan
+  ./scripts/build.sh --base-image nexus.internal/ubi9/ubi-minimal:latest \
+                     --runtime-image nexus.internal/ubi9/ubi-micro:latest
 USAGE
   exit 0
 }
@@ -63,6 +67,8 @@ PUSH=false
 SCAN=false
 NO_CACHE=false
 DOCKERFILE="Dockerfile"
+BASE_IMAGE="registry.access.redhat.com/ubi9/ubi-minimal:latest"
+RUNTIME_IMAGE="registry.access.redhat.com/ubi9/ubi-micro:latest"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -74,8 +80,10 @@ while [[ $# -gt 0 ]]; do
     --push)      PUSH=true;       shift   ;;
     --scan)      SCAN=true;       shift   ;;
     --no-cache)  NO_CACHE=true;   shift   ;;
-    --file)      DOCKERFILE="$2"; shift 2 ;;
-    -h|--help)   usage ;;
+    --file)          DOCKERFILE="$2";    shift 2 ;;
+    --base-image)    BASE_IMAGE="$2";   shift 2 ;;
+    --runtime-image) RUNTIME_IMAGE="$2"; shift 2 ;;
+    -h|--help)       usage ;;
     *) echo "ERROR: Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -150,6 +158,8 @@ printf "  %-16s %s\n" "Build date:"    "${BUILD_DATE}"
 printf "  %-16s %s\n" "VCS ref:"       "${VCS_REF}"
 printf "  %-16s %s\n" "Push:"          "${PUSH}"
 printf "  %-16s %s\n" "CVE scan:"      "${SCAN}"
+printf "  %-16s %s\n" "Base image:"    "${BASE_IMAGE}"
+printf "  %-16s %s\n" "Runtime image:" "${RUNTIME_IMAGE}"
 printf "  %-16s %s\n" "No-cache:"      "${NO_CACHE}"
 echo "─────────────────────────────────────────"
 echo ""
@@ -158,6 +168,8 @@ echo ""
 ${CONTAINER_RT} build \
   ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"} \
   --file="${DOCKERFILE}" \
+  --build-arg UBI_MINIMAL_IMAGE="${BASE_IMAGE}" \
+  --build-arg UBI_MICRO_IMAGE="${RUNTIME_IMAGE}" \
   --build-arg POSTGRES_EXPORTER_VERSION="${VERSION}" \
   --build-arg TARGETOS="${OS}" \
   --build-arg TARGETARCH="${ARCH}" \

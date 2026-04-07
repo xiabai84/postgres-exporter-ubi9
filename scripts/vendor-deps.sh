@@ -13,20 +13,24 @@ Runs inside a golang container — no Go installation needed.
 
 Options:
   --src-dir <path>   source directory containing go.mod (default: ./src)
+  --image <ref>      container image with microdnf + Go support
+                     (default: registry.access.redhat.com/ubi9/ubi-minimal:latest)
   -h | --help        print this help
 
 Examples:
   ./scripts/vendor-deps.sh
-  ./scripts/vendor-deps.sh --src-dir ./upstream/src
+  ./scripts/vendor-deps.sh --image nexus.internal/ubi9/ubi-minimal:latest
 USAGE
   exit 0
 }
 
 SRC_DIR="./src"
+VENDOR_IMAGE="registry.access.redhat.com/ubi9/ubi-minimal:latest"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --src-dir)  SRC_DIR="$2"; shift 2 ;;
+    --src-dir)  SRC_DIR="$2";      shift 2 ;;
+    --image)    VENDOR_IMAGE="$2"; shift 2 ;;
     -h|--help)  usage ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -53,6 +57,7 @@ ABS_SRC="$(cd "${SRC_DIR}" && pwd)"
 echo "postgres_exporter — vendor dependencies"
 echo "─────────────────────────────────────────"
 printf "  %-12s %s\n" "Source dir:" "${ABS_SRC}"
+printf "  %-12s %s\n" "Image:"      "${VENDOR_IMAGE}"
 printf "  %-12s %s\n" "Runtime:"    "${CONTAINER_RT}"
 echo "─────────────────────────────────────────"
 echo ""
@@ -63,7 +68,7 @@ ${CONTAINER_RT} run --rm \
   --platform linux/amd64 \
   -v "${ABS_SRC}:/src" \
   -w /src \
-  registry.access.redhat.com/ubi9/ubi-minimal:latest \
+  "${VENDOR_IMAGE}" \
   sh -c '
     set -eu
     echo "   Installing Go toolchain ..."
