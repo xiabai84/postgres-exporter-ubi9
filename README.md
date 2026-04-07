@@ -104,7 +104,7 @@ Produces: `postgres-exporter:0.19.1-ubi9-amd64`
 | `--scan` | off | Run a Trivy CVE scan after build |
 | `--no-cache` | off | Force Docker to re-pull base images |
 | `--file <path>` | `Dockerfile` | Path to an alternative Dockerfile |
-| `--base-image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Builder stage base image |
+| `--builder-image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Builder stage image (compiles the binary) |
 | `--runtime-image <ref>` | `registry.access.redhat.com/ubi9/ubi-micro:latest` | Runtime stage base image |
 
 ### Step 5: Run
@@ -139,7 +139,7 @@ If your organization mirrors container images to an internal registry (e.g. Nexu
 
 # Build using mirrored base images
 ./scripts/build.sh --version 0.19.1 \
-  --base-image nexus.internal/ubi9/ubi-minimal:latest \
+  --builder-image nexus.internal/ubi9/ubi-minimal:latest \
   --runtime-image nexus.internal/ubi9/ubi-micro:latest
 ```
 
