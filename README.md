@@ -18,7 +18,8 @@ Prometheus exporter for PostgreSQL, packaged as a minimal container image on Red
 ├── Dockerfile                  # Multi-stage build (builder + runtime)
 ├── .dockerignore
 ├── scripts/
-│   ├── vendor-source.sh        # Downloads source + vendors Go deps (needs internet)
+│   ├── download-source.sh      # Downloads upstream source (needs internet)
+│   ├── vendor-deps.sh          # Vendors Go dependencies in container (needs docker)
 │   └── build.sh                # Builds the Docker image (offline)
 └── src/                        # Vendored source — committed to git
     ├── go.mod / go.sum
@@ -26,72 +27,66 @@ Prometheus exporter for PostgreSQL, packaged as a minimal container image on Red
     └── vendor/                 # Go dependencies (go mod vendor output)
 ```
 
-## Quick Start
+## How It Works
 
-### 1. Vendor the source (once, requires internet)
+The build is split into two phases to separate internet-facing preparation from offline CI builds:
 
-The build is designed for air-gapped environments. Before you can build the
-image, you need to download the postgres_exporter source code and bundle all
-Go dependencies into the repository. This is done once on a machine with
-internet access using `scripts/vendor-source.sh`.
-
-#### Prerequisites
-
-| Tool | Minimum version | Check with |
-|---|---|---|
-| `bash` | 4.0+ | `bash --version` |
-| `curl` | any | `curl --version` |
-| `tar` | any | `tar --version` |
-| `docker` | 20.10+ | `docker --version` |
-
-No Go installation required — vendoring runs inside a container automatically.
-You need internet access to `github.com` and `proxy.golang.org`.
-
-#### Run the vendor script
-
-```bash
-# Default: vendors postgres_exporter v0.19.1 into ./src/
-./scripts/vendor-source.sh
-
-# Or specify a version explicitly
-./scripts/vendor-source.sh --version 0.19.1
+```
+Developer workstation (internet)         Internal CI (air-gapped)
+─────────────────────────────────        ────────────────────────────
+1. download-source.sh                   git clone / pull
+2. vendor-deps.sh                       build.sh --version 0.19.1
+3. git add src/ && git commit && push   → produces container image
 ```
 
-The script runs three steps automatically:
+The developer downloads source and vendors dependencies once. After committing `src/` to git, the air-gapped CI pipeline only needs Docker to build the image — no internet, no Go, no curl.
 
-1. Downloads the source tarball from GitHub (verifies SHA-256 if available)
-2. Extracts it into `src/`
-3. Runs `go mod vendor` inside a `golang:1.22` container to bundle all dependencies and verify the vendor directory compiles
+## Quick Start
 
-When finished, `src/` contains the full source tree and `src/vendor/` contains
-all Go dependencies — everything needed for an offline build.
+### Step 1: Download source (requires internet)
 
-#### Options
+```bash
+./scripts/download-source.sh --version 0.19.1
+```
+
+Downloads the postgres_exporter source tarball from GitHub, verifies SHA-256 if available, and extracts it into `src/`.
+
+Prerequisites: `bash`, `curl`, `tar`
 
 | Flag | Default | Description |
 |---|---|---|
 | `--version <ver>` | `0.19.1` | postgres_exporter version to download |
-| `--src-dir <path>` | `./src` | Where to place the vendored source |
-| `--keep-existing` | off | Don't wipe `src/` before extracting (useful for re-vendoring) |
-| `-h`, `--help` | | Print usage information |
+| `--src-dir <path>` | `./src` | Where to extract the source |
+| `--keep-existing` | off | Don't wipe `src/` before extracting |
 
-#### Commit the result
+### Step 2: Vendor Go dependencies (requires Docker)
 
-After the script completes, commit `src/` so that CI and other developers can
-build without internet:
+```bash
+./scripts/vendor-deps.sh
+```
+
+Runs `go mod vendor` inside a `golang:1.24` container to bundle all Go dependencies into `src/vendor/`. Also verifies the vendor directory compiles successfully.
+
+Prerequisites: `bash`, `docker` (no Go installation needed)
+
+| Flag | Default | Description |
+|---|---|---|
+| `--src-dir <path>` | `./src` | Source directory containing `go.mod` |
+
+### Step 3: Commit and push
 
 ```bash
 git add src/
 git commit -m "vendor: postgres_exporter v0.19.1"
-git push
+git push   # to internal git repository
 ```
 
 > **Note:** `src/vendor/` adds ~15-20 MB to the repository. This is the
 > expected trade-off for fully reproducible, offline builds.
 
-### 2. Build the image (offline)
+### Step 4: Build the image (offline)
 
-Once `src/` is committed, no internet access is needed. Run:
+On the air-gapped CI or locally — no internet access needed:
 
 ```bash
 ./scripts/build.sh --version 0.19.1
@@ -108,9 +103,8 @@ Produces: `postgres-exporter:0.19.1-ubi9-amd64`
 | `--scan` | off | Run a Trivy CVE scan after build |
 | `--no-cache` | off | Force Docker to re-pull base images |
 | `--file <path>` | `Dockerfile` | Path to an alternative Dockerfile |
-| `-h`, `--help` | | Print usage information |
 
-### 3. Run
+### Step 5: Run
 
 ```bash
 docker run --rm -e DATA_SOURCE_NAME="postgresql://user:pass@host:5432/db?sslmode=disable" \
@@ -121,15 +115,25 @@ Metrics are available at `http://localhost:9187/metrics`.
 
 ## Upgrading
 
-Re-run the vendor script with the new version, then rebuild:
-
 ```bash
-./scripts/vendor-source.sh --version 0.20.0
+./scripts/download-source.sh --version 0.20.0
+./scripts/vendor-deps.sh
 git add src/
 git commit -m "vendor: upgrade postgres_exporter to v0.20.0"
 git push
 
+# On CI or locally:
 ./scripts/build.sh --version 0.20.0
+```
+
+## Re-Vendoring (after patching go.mod)
+
+If you edit `src/go.mod` directly (e.g. to pin a dependency), re-vendor without re-downloading:
+
+```bash
+./scripts/vendor-deps.sh
+git add src/
+git commit -m "vendor: re-vendor after go.mod change"
 ```
 
 ## Environment Variables
