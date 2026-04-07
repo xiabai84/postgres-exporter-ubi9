@@ -27,8 +27,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Vendor source
-        run: ./scripts/vendor-source.sh --version ${{ env.POSTGRES_EXPORTER_VERSION }}
+      - name: Download source
+        run: ./scripts/download-source.sh --version ${{ env.POSTGRES_EXPORTER_VERSION }}
+
+      - name: Vendor dependencies
+        run: ./scripts/vendor-deps.sh
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
