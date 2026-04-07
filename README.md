@@ -65,13 +65,14 @@ Prerequisites: `bash`, `curl`, `tar`
 ./scripts/vendor-deps.sh
 ```
 
-Runs `go mod vendor` inside a `golang:1.24` container to bundle all Go dependencies into `src/vendor/`. Also verifies the vendor directory compiles successfully.
+Runs `go mod vendor` inside a UBI9 container to bundle all Go dependencies into `src/vendor/`. Also verifies the vendor directory compiles successfully.
 
-Prerequisites: `bash`, `docker` (no Go installation needed)
+Prerequisites: `bash`, `docker` or `podman` (no Go installation needed)
 
 | Flag | Default | Description |
 |---|---|---|
 | `--src-dir <path>` | `./src` | Source directory containing `go.mod` |
+| `--image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Container image for vendoring |
 
 ### Step 3: Commit and push
 
@@ -103,6 +104,8 @@ Produces: `postgres-exporter:0.19.1-ubi9-amd64`
 | `--scan` | off | Run a Trivy CVE scan after build |
 | `--no-cache` | off | Force Docker to re-pull base images |
 | `--file <path>` | `Dockerfile` | Path to an alternative Dockerfile |
+| `--base-image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Builder stage base image |
+| `--runtime-image <ref>` | `registry.access.redhat.com/ubi9/ubi-micro:latest` | Runtime stage base image |
 
 ### Step 5: Run
 
@@ -125,6 +128,22 @@ git push
 # On CI or locally:
 ./scripts/build.sh --version 0.20.0
 ```
+
+## Using an Internal Registry
+
+If your organization mirrors container images to an internal registry (e.g. Nexus, Artifactory), override the default image URLs:
+
+```bash
+# Vendor using a mirrored UBI9 image
+./scripts/vendor-deps.sh --image nexus.internal/ubi9/ubi-minimal:latest
+
+# Build using mirrored base images
+./scripts/build.sh --version 0.19.1 \
+  --base-image nexus.internal/ubi9/ubi-minimal:latest \
+  --runtime-image nexus.internal/ubi9/ubi-micro:latest
+```
+
+All scripts default to `registry.access.redhat.com/...` when no override is provided.
 
 ## Re-Vendoring (after patching go.mod)
 
