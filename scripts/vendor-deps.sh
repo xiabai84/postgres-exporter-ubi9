@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Vendors Go dependencies inside a container for an existing src/ directory.
-# Requirements: bash, docker
+# Requirements: bash, docker or podman
 # No Go installation needed.
 set -euo pipefail
 
@@ -32,9 +32,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Pre-flight checks ────────────────────────────────────────────────────────
-if ! command -v docker &>/dev/null; then
-  echo "ERROR: 'docker' is required but not found in PATH." >&2
+# ── Detect container runtime ──────────────────────────────────────────────────
+if command -v docker &>/dev/null; then
+  CONTAINER_RT=docker
+elif command -v podman &>/dev/null; then
+  CONTAINER_RT=podman
+else
+  echo "ERROR: 'docker' or 'podman' is required but neither was found in PATH." >&2
   exit 1
 fi
 
@@ -49,12 +53,13 @@ ABS_SRC="$(cd "${SRC_DIR}" && pwd)"
 echo "postgres_exporter — vendor dependencies"
 echo "─────────────────────────────────────────"
 printf "  %-12s %s\n" "Source dir:" "${ABS_SRC}"
+printf "  %-12s %s\n" "Runtime:"    "${CONTAINER_RT}"
 echo "─────────────────────────────────────────"
 echo ""
 
 echo "── Vendoring Go dependencies (in container) ────────────────"
 
-docker run --rm \
+${CONTAINER_RT} run --rm \
   -v "${ABS_SRC}:/src" \
   -w /src \
   registry.access.redhat.com/ubi9/ubi-minimal:latest \

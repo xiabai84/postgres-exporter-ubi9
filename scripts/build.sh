@@ -83,8 +83,12 @@ done
 # ── Pre-flight checks ─────────────────────────────────────────────────────────
 ERRORS=()
 
-if ! command -v docker &>/dev/null; then
-  ERRORS+=("'docker' is required but not found in PATH.")
+if command -v docker &>/dev/null; then
+  CONTAINER_RT=docker
+elif command -v podman &>/dev/null; then
+  CONTAINER_RT=podman
+else
+  ERRORS+=("'docker' or 'podman' is required but neither was found in PATH.")
 fi
 
 if [[ ! -f "${DOCKERFILE}" ]]; then
@@ -93,17 +97,17 @@ fi
 
 if [[ ! -d "${SRC_DIR}" ]]; then
   ERRORS+=("Source directory not found: ${SRC_DIR}")
-  ERRORS+=("  → Run: ./scripts/vendor-source.sh --version ${VERSION}")
+  ERRORS+=("  → Run: ./scripts/download-source.sh --version ${VERSION} && ./scripts/vendor-deps.sh")
 fi
 
 if [[ -d "${SRC_DIR}" && ! -d "${SRC_DIR}/vendor" ]]; then
   ERRORS+=("Vendor directory not found: ${SRC_DIR}/vendor/")
-  ERRORS+=("  → Run: ./scripts/vendor-source.sh --version ${VERSION}")
+  ERRORS+=("  → Run: ./scripts/download-source.sh --version ${VERSION} && ./scripts/vendor-deps.sh")
 fi
 
 if [[ -d "${SRC_DIR}/vendor" && ! -f "${SRC_DIR}/vendor/modules.txt" ]]; then
   ERRORS+=("Vendor directory is incomplete (modules.txt missing): ${SRC_DIR}/vendor/")
-  ERRORS+=("  → Run: ./scripts/vendor-source.sh --version ${VERSION}")
+  ERRORS+=("  → Run: ./scripts/download-source.sh --version ${VERSION} && ./scripts/vendor-deps.sh")
 fi
 
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
@@ -151,7 +155,7 @@ echo "────────────────────────�
 echo ""
 
 # ── Build ─────────────────────────────────────────────────────────────────────
-docker build \
+${CONTAINER_RT} build \
   ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"} \
   --file="${DOCKERFILE}" \
   --build-arg POSTGRES_EXPORTER_VERSION="${VERSION}" \
@@ -195,7 +199,7 @@ if [[ "${PUSH}" == "true" ]]; then
     exit 1
   fi
   echo "── Pushing image ────────────────────────────────────────────"
-  docker push "${FULL_IMAGE}"
+  ${CONTAINER_RT} push "${FULL_IMAGE}"
   echo "✔  Pushed: ${FULL_IMAGE}"
 fi
 
