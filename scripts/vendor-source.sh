@@ -4,18 +4,9 @@
 #
 #  PURPOSE
 #  -------
-#  Prepares the src/ directory for an air-gapped CI build.
-#  Run this script ONCE on an internet-connected machine whenever you need
-#  to initialise or upgrade postgres_exporter.
-#
-#  What it does:
-#    1. Downloads the postgres_exporter source tarball from GitHub
-#    2. Extracts it to src/
-#    3. Runs `go mod vendor` to bundle all Go module dependencies
-#    4. Prints the git commands needed to commit the result
-#
-#  After running, commit src/ to git and push to the internal repository.
-#  The CI pipeline can then build the Docker image with zero internet access.
+#  Downloads the postgres_exporter source and vendors Go dependencies
+#  for an air-gapped CI build. No Go installation required — vendoring
+#  runs inside a container.
 #
 #  Usage:
 #    ./scripts/vendor-source.sh [OPTIONS]
@@ -23,16 +14,11 @@
 #  Options:
 #    --version <ver>    postgres_exporter version to vendor (default: 0.19.1)
 #    --src-dir <path>   destination directory              (default: ./src)
-#    --keep-existing    do not delete src/ before vendoring
+#    --keep-existing    do not delete src/ before extracting
 #    -h | --help        print this help
 #
-#  Examples:
-#    ./scripts/vendor-source.sh
-#    ./scripts/vendor-source.sh --version 0.19.1
-#    ./scripts/vendor-source.sh --version 0.19.1 --src-dir ./upstream/src
-#
 #  Requirements:
-#    - bash, curl, tar, go (any recent version)
+#    - bash, curl, tar, docker
 #    - Internet access to github.com and proxy.golang.org
 # =============================================================================
 set -euo pipefail
@@ -41,13 +27,13 @@ usage() {
   cat <<'USAGE'
 Usage: ./scripts/vendor-source.sh [OPTIONS]
 
-Prepares the src/ directory for an air-gapped CI build.
-Run once on an internet-connected machine.
+Downloads postgres_exporter source and vendors Go dependencies.
+No Go installation required — vendoring runs inside a container.
 
 Options:
   --version <ver>    postgres_exporter version to vendor (default: 0.19.1)
   --src-dir <path>   destination directory (default: ./src)
-  --keep-existing    do not delete src/ before vendoring
+  --keep-existing    do not delete src/ before extracting
   -h | --help        print this help
 
 Examples:
@@ -80,7 +66,7 @@ TARBALL="${TMPFILE}.tar.gz"
 trap 'rm -f "${TMPFILE}" "${TARBALL}"' EXIT
 
 # ── Pre-flight checks ─────────────────────────────────────────────────────────
-for cmd in curl tar go git; do
+for cmd in curl tar docker; do
   if ! command -v "${cmd}" &>/dev/null; then
     echo "ERROR: '${cmd}' is required but not found in PATH." >&2
     exit 1
@@ -96,7 +82,7 @@ echo "────────────────────────�
 echo ""
 
 # ── Step 1: Download source tarball ──────────────────────────────────────────
-echo "── Step 1/4: Downloading source tarball ─────────────────────"
+echo "── Step 1/3: Downloading source tarball ─────────────────────"
 curl -fsSL --progress-bar "${UPSTREAM_URL}" -o "${TARBALL}"
 echo "   Saved to: ${TARBALL}"
 echo "   Size:     $(du -sh "${TARBALL}" | cut -f1)"
@@ -125,7 +111,7 @@ fi
 
 # ── Step 2: Extract to src/ ───────────────────────────────────────────────────
 echo ""
-echo "── Step 2/4: Extracting to ${SRC_DIR}/ ──────────────────────"
+echo "── Step 2/3: Extracting to ${SRC_DIR}/ ──────────────────────"
 
 if [[ "${KEEP_EXISTING}" == "false" ]]; then
   if [[ -d "${SRC_DIR}" ]]; then
@@ -139,34 +125,35 @@ tar -xzf "${TARBALL}" \
     --strip-components=1 \
     -C "${SRC_DIR}"
 
-echo "   Extracted $(find "${SRC_DIR}" -type f | wc -l) files."
+echo "   Extracted $(find "${SRC_DIR}" -type f | wc -l | tr -d ' ') files."
 
-# ── Step 3: Vendor Go module dependencies ─────────────────────────────────────
+# ── Step 3: Vendor Go dependencies inside a container ────────────────────────
 echo ""
-echo "── Step 3/4: Vendoring Go dependencies ──────────────────────"
-echo "   Running: go mod download && go mod vendor"
-echo "   (This may take a minute the first time …)"
+echo "── Step 3/3: Vendoring Go dependencies (in container) ───────"
 
-pushd "${SRC_DIR}" > /dev/null
+ABS_SRC="$(cd "${SRC_DIR}" && pwd)"
 
-# Download modules into the local module cache first, then vendor them.
-go mod download
-go mod verify
-go mod vendor
+docker run --rm \
+  -v "${ABS_SRC}:/src" \
+  -w /src \
+  golang:1.24-bookworm \
+  sh -c '
+    set -eu
+    echo "   go mod download ..."
+    go mod download
+    echo "   go mod verify ..."
+    go mod verify
+    echo "   go mod vendor ..."
+    go mod vendor
+    echo "   Verifying vendor is complete ..."
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOFLAGS="-mod=vendor" \
+      go build -o /dev/null ./cmd/postgres_exporter
+    echo "   OK — vendor directory is complete and buildable."
+  '
 
-VENDOR_COUNT=$(find vendor -type f | wc -l)
-VENDOR_SIZE=$(du -sh vendor | cut -f1)
+VENDOR_COUNT=$(find "${SRC_DIR}/vendor" -type f | wc -l | tr -d ' ')
+VENDOR_SIZE=$(du -sh "${SRC_DIR}/vendor" | cut -f1)
 echo "   Vendored ${VENDOR_COUNT} files, total size: ${VENDOR_SIZE}"
-
-popd > /dev/null
-
-# ── Step 4: Verify the vendor directory is complete ───────────────────────────
-echo ""
-echo "── Step 4/4: Verifying vendor consistency ───────────────────"
-pushd "${SRC_DIR}" > /dev/null
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOFLAGS="-mod=vendor" go build -v -o /dev/null ./cmd/postgres_exporter
-echo "   OK — vendor directory is complete and buildable."
-popd > /dev/null
 
 # ── Summary and next steps ────────────────────────────────────────────────────
 echo ""

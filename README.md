@@ -42,10 +42,10 @@ internet access using `scripts/vendor-source.sh`.
 | `bash` | 4.0+ | `bash --version` |
 | `curl` | any | `curl --version` |
 | `tar` | any | `tar --version` |
-| `go` | 1.21+ | `go version` |
-| `git` | any | `git --version` |
+| `docker` | 20.10+ | `docker --version` |
 
-You also need internet access to `github.com` and `proxy.golang.org`.
+No Go installation required — vendoring runs inside a container automatically.
+You need internet access to `github.com` and `proxy.golang.org`.
 
 #### Run the vendor script
 
@@ -57,12 +57,11 @@ You also need internet access to `github.com` and `proxy.golang.org`.
 ./scripts/vendor-source.sh --version 0.19.1
 ```
 
-The script runs four steps automatically:
+The script runs three steps automatically:
 
 1. Downloads the source tarball from GitHub (verifies SHA-256 if available)
 2. Extracts it into `src/`
-3. Runs `go mod download` + `go mod vendor` to bundle all Go dependencies
-4. Compiles the binary once to verify the vendor directory is complete
+3. Runs `go mod vendor` inside a `golang:1.22` container to bundle all dependencies and verify the vendor directory compiles
 
 When finished, `src/` contains the full source tree and `src/vendor/` contains
 all Go dependencies — everything needed for an offline build.
