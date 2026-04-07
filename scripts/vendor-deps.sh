@@ -57,9 +57,12 @@ echo "── Vendoring Go dependencies (in container) ────────�
 docker run --rm \
   -v "${ABS_SRC}:/src" \
   -w /src \
-  golang:1.24-bookworm \
+  registry.access.redhat.com/ubi9/ubi-minimal:latest \
   sh -c '
     set -eu
+    echo "   Installing Go toolchain ..."
+    microdnf install -y golang > /dev/null 2>&1
+    microdnf clean all > /dev/null 2>&1
     echo "   go mod download ..."
     go mod download
     echo "   go mod verify ..."
