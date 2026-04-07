@@ -60,6 +60,7 @@ echo ""
 echo "── Vendoring Go dependencies (in container) ────────────────"
 
 ${CONTAINER_RT} run --rm \
+  --platform linux/amd64 \
   -v "${ABS_SRC}:/src" \
   -w /src \
   registry.access.redhat.com/ubi9/ubi-minimal:latest \
