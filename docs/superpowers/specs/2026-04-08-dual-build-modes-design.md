@@ -52,6 +52,11 @@ All existing files (`Dockerfile`, `.dockerignore`, `scripts/`) move into `air-ga
 # Step 2: Build image (deps fetched from internal proxy at build time)
 ./goproxy/scripts/build.sh --version 0.19.1 \
   --goproxy https://nexus.internal/repository/go-proxy/
+
+# If proxy requires authentication, pass a .netrc file:
+./goproxy/scripts/build.sh --version 0.19.1 \
+  --goproxy https://nexus.internal/repository/go-proxy/ \
+  --netrc ~/.netrc
 ```
 
 No `vendor-deps.sh` needed. No `src/vendor/` committed. The `src/` directory contains only source code.
@@ -64,6 +69,7 @@ Two-stage build, same as air-gapped but without vendor enforcement:
 - Installs Go via `microdnf`
 - `COPY src/ /build/`
 - `GOPROXY` set via build-arg to the internal proxy URL
+- If proxy requires authentication, a `.netrc` file is mounted as a BuildKit secret (`--mount=type=secret,id=netrc,target=/root/.netrc`). The secret is only available during the `go build` step and is never written into image layers.
 - `go build` without `-mod=vendor` — dependencies are downloaded from the proxy
 
 **Stage 2 — Runtime (ubi-micro):**
@@ -86,6 +92,7 @@ Two-stage build, same as air-gapped but without vendor enforcement:
 Same structure as `air-gapped/scripts/build.sh` with these differences:
 
 - `--goproxy <url>` flag is **required** (no default)
+- `--netrc <path>` flag is **optional** — path to a `.netrc` file for proxy authentication. Passed to docker/podman as `--secret id=netrc,src=<path>`. The Dockerfile mounts it only during the `go build` step.
 - No `--src-dir` flag (always expects `src/` at repo root)
 - Pre-flight check: `src/go.mod` must exist (but `src/vendor/` is NOT required)
 - Passes `GOPROXY` as a `--build-arg` to docker/podman
