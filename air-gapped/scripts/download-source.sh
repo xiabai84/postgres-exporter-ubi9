@@ -6,7 +6,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/download-source.sh [OPTIONS]
+Usage: ./air-gapped/scripts/download-source.sh [OPTIONS]
 
 Downloads postgres_exporter source from GitHub and extracts to src/.
 No Docker or Go required.
@@ -18,8 +18,8 @@ Options:
   -h | --help        print this help
 
 Examples:
-  ./scripts/download-source.sh
-  ./scripts/download-source.sh --version 0.19.1
+  ./air-gapped/scripts/download-source.sh
+  ./air-gapped/scripts/download-source.sh --version 0.19.1
 USAGE
   exit 0
 }
@@ -103,4 +103,4 @@ tar -xzf "${TARBALL}" \
 
 echo "   Extracted $(find "${SRC_DIR}" -type f | wc -l | tr -d ' ') files."
 echo ""
-echo "Done. Next step: ./scripts/vendor-deps.sh --src-dir ${SRC_DIR}"
+echo "Done. Next step: ./air-gapped/scripts/vendor-deps.sh --src-dir ${SRC_DIR}"

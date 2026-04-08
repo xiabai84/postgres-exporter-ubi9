@@ -31,7 +31,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/build.sh [OPTIONS]
+Usage: ./air-gapped/scripts/build.sh [OPTIONS]
 
 Options:
   --version  <ver>   postgres_exporter version (default: 0.19.1)
@@ -47,10 +47,10 @@ Options:
   -h | --help        Print this help
 
 Examples:
-  ./scripts/build.sh
-  ./scripts/build.sh --version 0.19.1 --arch arm64
-  ./scripts/build.sh --registry quay.io/myorg --push --scan
-  ./scripts/build.sh --builder-image nexus.internal/ubi9/ubi-minimal:latest \
+  ./air-gapped/scripts/build.sh
+  ./air-gapped/scripts/build.sh --version 0.19.1 --arch arm64
+  ./air-gapped/scripts/build.sh --registry quay.io/myorg --push --scan
+  ./air-gapped/scripts/build.sh --builder-image nexus.internal/ubi9/ubi-minimal:latest \
                      --runtime-image nexus.internal/ubi9/ubi-micro:latest
 USAGE
   exit 0
@@ -66,7 +66,7 @@ SRC_DIR="./src"
 PUSH=false
 SCAN=false
 NO_CACHE=false
-DOCKERFILE="Dockerfile"
+DOCKERFILE="air-gapped/Dockerfile"
 BUILDER_IMAGE="registry.access.redhat.com/ubi9/ubi-minimal:latest"
 RUNTIME_IMAGE="registry.access.redhat.com/ubi9/ubi-micro:latest"
 
@@ -105,17 +105,17 @@ fi
 
 if [[ ! -d "${SRC_DIR}" ]]; then
   ERRORS+=("Source directory not found: ${SRC_DIR}")
-  ERRORS+=("  → Run: ./scripts/download-source.sh --version ${VERSION} && ./scripts/vendor-deps.sh")
+  ERRORS+=("  → Run: ./air-gapped/scripts/download-source.sh --version ${VERSION} && ./air-gapped/scripts/vendor-deps.sh")
 fi
 
 if [[ -d "${SRC_DIR}" && ! -d "${SRC_DIR}/vendor" ]]; then
   ERRORS+=("Vendor directory not found: ${SRC_DIR}/vendor/")
-  ERRORS+=("  → Run: ./scripts/download-source.sh --version ${VERSION} && ./scripts/vendor-deps.sh")
+  ERRORS+=("  → Run: ./air-gapped/scripts/download-source.sh --version ${VERSION} && ./air-gapped/scripts/vendor-deps.sh")
 fi
 
 if [[ -d "${SRC_DIR}/vendor" && ! -f "${SRC_DIR}/vendor/modules.txt" ]]; then
   ERRORS+=("Vendor directory is incomplete (modules.txt missing): ${SRC_DIR}/vendor/")
-  ERRORS+=("  → Run: ./scripts/download-source.sh --version ${VERSION} && ./scripts/vendor-deps.sh")
+  ERRORS+=("  → Run: ./air-gapped/scripts/download-source.sh --version ${VERSION} && ./air-gapped/scripts/vendor-deps.sh")
 fi
 
 if [[ ${#ERRORS[@]} -gt 0 ]]; then

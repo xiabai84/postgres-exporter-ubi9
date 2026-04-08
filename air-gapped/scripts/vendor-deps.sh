@@ -6,7 +6,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/vendor-deps.sh [OPTIONS]
+Usage: ./air-gapped/scripts/vendor-deps.sh [OPTIONS]
 
 Vendors Go dependencies for an existing src/ directory.
 Runs inside a golang container — no Go installation needed.
@@ -22,10 +22,10 @@ Options:
   -h | --help        print this help
 
 Examples:
-  ./scripts/vendor-deps.sh
-  ./scripts/vendor-deps.sh --image nexus.internal/ubi9/ubi-minimal:latest
-  ./scripts/vendor-deps.sh --goproxy https://nexus.internal/repository/go-proxy/
-  ./scripts/vendor-deps.sh --goproxy https://nexus.internal/repository/go-proxy/ \
+  ./air-gapped/scripts/vendor-deps.sh
+  ./air-gapped/scripts/vendor-deps.sh --image nexus.internal/ubi9/ubi-minimal:latest
+  ./air-gapped/scripts/vendor-deps.sh --goproxy https://nexus.internal/repository/go-proxy/
+  ./air-gapped/scripts/vendor-deps.sh --goproxy https://nexus.internal/repository/go-proxy/ \
                            --netrc ~/.netrc
 USAGE
   exit 0
@@ -59,7 +59,7 @@ fi
 
 if [[ ! -f "${SRC_DIR}/go.mod" ]]; then
   echo "ERROR: ${SRC_DIR}/go.mod not found." >&2
-  echo "  Run ./scripts/download-source.sh first." >&2
+  echo "  Run ./air-gapped/scripts/download-source.sh first." >&2
   exit 1
 fi
 
@@ -123,5 +123,5 @@ echo "  git commit -m \"vendor: postgres_exporter with Go modules\""
 echo "  git push"
 echo ""
 echo "  The air-gapped CI pipeline can then build with:"
-echo "  ./scripts/build.sh --version <ver>"
+echo "  ./air-gapped/scripts/build.sh --version <ver>"
 echo ""
