@@ -16,12 +16,6 @@ pipeline {
             }
         }
 
-        stage('Download Source') {
-            steps {
-                sh "./air-gapped/scripts/download-source.sh --version ${VERSION}"
-            }
-        }
-
         stage('Build Image') {
             steps {
                 withCredentials([usernamePassword(
