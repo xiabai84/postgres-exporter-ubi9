@@ -73,6 +73,8 @@ Prerequisites: `bash`, `docker` or `podman` (no Go installation needed)
 |---|---|---|
 | `--src-dir <path>` | `./src` | Source directory containing `go.mod` |
 | `--image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Container image for vendoring |
+| `--goproxy <url>` | `https://proxy.golang.org,direct` | Go module proxy URL (also reads `GOPROXY` env var) |
+| `--netrc <path>` | none | Mount a `.netrc` file for proxy authentication |
 
 ### Step 3: Commit and push
 
@@ -131,7 +133,9 @@ git push
 
 ## Using an Internal Registry
 
-If your organization mirrors container images to an internal registry (e.g. Nexus, Artifactory), override the default image URLs:
+If your organization mirrors container images and Go modules to an internal registry (e.g. Nexus, Artifactory), override the defaults:
+
+### Container images
 
 ```bash
 # Vendor using a mirrored UBI9 image
@@ -142,6 +146,35 @@ If your organization mirrors container images to an internal registry (e.g. Nexu
   --builder-image nexus.internal/ubi9/ubi-minimal:latest \
   --runtime-image nexus.internal/ubi9/ubi-micro:latest
 ```
+
+### Go module proxy
+
+If your organization runs an internal Go proxy (e.g. Nexus Go proxy repository), use `--goproxy` to download Go modules through it instead of the public `proxy.golang.org`:
+
+```bash
+./scripts/vendor-deps.sh \
+  --goproxy https://nexus.internal/repository/go-proxy/
+```
+
+If the proxy requires authentication, create a `~/.netrc` file:
+
+```
+machine nexus.internal
+login your-username
+password your-password
+```
+
+Then pass it with `--netrc`:
+
+```bash
+./scripts/vendor-deps.sh \
+  --goproxy https://nexus.internal/repository/go-proxy/ \
+  --netrc ~/.netrc
+```
+
+> **Note:** The Go proxy is only used during vendoring (step 2). The Dockerfile
+> keeps `GOPROXY=off` so that all builds remain fully offline after `src/vendor/`
+> is committed.
 
 All scripts default to `registry.access.redhat.com/...` when no override is provided.
 
