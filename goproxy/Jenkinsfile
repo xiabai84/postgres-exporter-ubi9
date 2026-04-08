@@ -16,7 +16,7 @@ pipeline {
             }
         }
 
-        stage('Build Image') {
+        stage('Build') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'nexus-credentials',
@@ -32,38 +32,62 @@ machine nexus.internal
 login ${NEXUS_USER}
 password ${NEXUS_PASS}
 EOF
+                        export GONETRC="${NETRC_FILE}"
+                        export GOPROXY="${GOPROXY}"
 
-                        ./goproxy/scripts/build.sh \
-                            --version ${VERSION} \
-                            --goproxy ${GOPROXY} \
-                            --netrc "${NETRC_FILE}"
+                        cd src
+                        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+                            go build \
+                                -trimpath \
+                                -ldflags="-s -w \
+                                    -X github.com/prometheus/common/version.Version=${VERSION} \
+                                    -X github.com/prometheus/common/version.Branch=release \
+                                    -X github.com/prometheus/common/version.BuildUser=jenkins \
+                                    -X github.com/prometheus/common/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                                -o ../postgres_exporter \
+                                ./cmd/postgres_exporter
+
+                        ../postgres_exporter --version
                     '''
                 }
             }
         }
 
+        stage('Build Image') {
+            steps {
+                // TODO: Replace with your shared library call, e.g.:
+                // buildDockerImage(
+                //     app: APP,
+                //     version: VERSION,
+                //     artifact: 'postgres_exporter',
+                //     dockerfile: 'goproxy/Dockerfile',
+                // )
+                echo "Build image skipped — integrate your shared library here"
+            }
+        }
+
         stage('Push Image') {
             steps {
-                // TODO: Replace with your internal container registry URL and credentials
-                sh '''
-                    echo "Pushing image to internal registry ..."
-                    # docker tag ${APP}:${VERSION}-ubi9-amd64 registry.internal/${APP}:${VERSION}-ubi9
-                    # docker push registry.internal/${APP}:${VERSION}-ubi9
-                    echo "Push skipped — uncomment the lines above and configure your registry"
-                '''
+                // TODO: Replace with your shared library call, e.g.:
+                // pushDockerImage(
+                //     app: APP,
+                //     version: VERSION,
+                //     registry: 'registry.internal',
+                // )
+                echo "Push skipped — integrate your shared library here"
             }
         }
     }
 
     post {
         success {
-            echo "Build successful: ${APP}:${VERSION}-ubi9-amd64"
+            echo "Build successful: ${APP} v${VERSION}"
         }
         failure {
             echo "Build failed — check stage logs for details"
         }
         always {
-            sh 'rm -rf src/'
+            sh 'rm -f postgres_exporter'
         }
     }
 }
