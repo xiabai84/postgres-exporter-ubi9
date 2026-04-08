@@ -15,23 +15,34 @@ Options:
   --src-dir <path>   source directory containing go.mod (default: ./src)
   --image <ref>      container image with microdnf + Go support
                      (default: registry.access.redhat.com/ubi9/ubi-minimal:latest)
+  --goproxy <url>    Go module proxy URL (default: https://proxy.golang.org,direct)
+                     Use for internal Nexus/Artifactory Go proxy repositories.
+                     Also reads GOPROXY env var if set.
+  --netrc <path>     Mount a .netrc file for proxy authentication (optional)
   -h | --help        print this help
 
 Examples:
   ./scripts/vendor-deps.sh
   ./scripts/vendor-deps.sh --image nexus.internal/ubi9/ubi-minimal:latest
+  ./scripts/vendor-deps.sh --goproxy https://nexus.internal/repository/go-proxy/
+  ./scripts/vendor-deps.sh --goproxy https://nexus.internal/repository/go-proxy/ \
+                           --netrc ~/.netrc
 USAGE
   exit 0
 }
 
 SRC_DIR="./src"
 VENDOR_IMAGE="registry.access.redhat.com/ubi9/ubi-minimal:latest"
+GO_PROXY="${GOPROXY:-https://proxy.golang.org,direct}"
+NETRC_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --src-dir)  SRC_DIR="$2";      shift 2 ;;
-    --image)    VENDOR_IMAGE="$2"; shift 2 ;;
-    -h|--help)  usage ;;
+    --src-dir)   SRC_DIR="$2";       shift 2 ;;
+    --image)     VENDOR_IMAGE="$2";  shift 2 ;;
+    --goproxy)   GO_PROXY="$2";      shift 2 ;;
+    --netrc)     NETRC_FILE="$2";    shift 2 ;;
+    -h|--help)   usage ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -58,14 +69,27 @@ echo "postgres_exporter — vendor dependencies"
 echo "─────────────────────────────────────────"
 printf "  %-12s %s\n" "Source dir:" "${ABS_SRC}"
 printf "  %-12s %s\n" "Image:"      "${VENDOR_IMAGE}"
+printf "  %-12s %s\n" "GOPROXY:"    "${GO_PROXY}"
 printf "  %-12s %s\n" "Runtime:"    "${CONTAINER_RT}"
 echo "─────────────────────────────────────────"
 echo ""
 
 echo "── Vendoring Go dependencies (in container) ────────────────"
 
+NETRC_MOUNT=()
+if [[ -n "${NETRC_FILE}" ]]; then
+  if [[ ! -f "${NETRC_FILE}" ]]; then
+    echo "ERROR: netrc file not found: ${NETRC_FILE}" >&2
+    exit 1
+  fi
+  ABS_NETRC="$(cd "$(dirname "${NETRC_FILE}")" && pwd)/$(basename "${NETRC_FILE}")"
+  NETRC_MOUNT=(-v "${ABS_NETRC}:/root/.netrc:ro")
+fi
+
 ${CONTAINER_RT} run --rm \
   --platform linux/amd64 \
+  -e GOPROXY="${GO_PROXY}" \
+  ${NETRC_MOUNT[@]+"${NETRC_MOUNT[@]}"} \
   -v "${ABS_SRC}:/src" \
   -w /src \
   "${VENDOR_IMAGE}" \
