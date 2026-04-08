@@ -3,7 +3,6 @@
 .gitattributes
 .github/
 .gitlab-ci.yml
-Jenkinsfile
 .circleci/
 .tekton/
 .vscode/
@@ -12,9 +11,6 @@ Jenkinsfile
 *.swo
 .DS_Store
 Thumbs.db
-.build/
-dist/
-bin/
 README.md
 docs/
 LICENSE*
@@ -30,6 +26,7 @@ kubeconfig
 *.kubeconfig
 air-gapped/
 goproxy/
-single-stage/scripts/
+single-stage/Jenkinsfile
+src/
 Makefile
 docker-compose*.yml

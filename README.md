@@ -42,12 +42,10 @@ Prometheus exporter for PostgreSQL, packaged as a minimal container image on Red
 │   └── scripts/
 │       └── build.sh                  # Builds image, deps fetched via GOPROXY
 │
-├── single-stage/                     # Single-stage build on ubi-minimal
-│   ├── Dockerfile
+├── single-stage/                     # Runtime image on ubi-minimal (binary compiled externally)
+│   ├── Dockerfile                    # Packages pre-compiled binary into ubi-minimal
 │   ├── .dockerignore
-│   ├── Jenkinsfile
-│   └── scripts/
-│       └── build.sh                  # Same as goproxy but single-stage
+│   └── Jenkinsfile                   # Compiles on agent, then builds image
 │
 ├── docs/
 │   └── build-pipeline.md            # Detailed pipeline documentation
@@ -191,37 +189,15 @@ Credentials are mounted as a BuildKit secret during build only — they are neve
 
 ## Single-Stage Build
 
-Same as GoProxy but uses a single Dockerfile stage on `ubi-minimal`. The Go toolchain is installed, source compiled, and Go removed — all in one layer. The resulting image is larger (~413 MB vs ~38 MB) but includes a shell for debugging.
+Designed for Jenkins pipelines where the Go binary is compiled on the CI agent (`cing-go`) and the Dockerfile only packages the pre-built binary into `ubi-minimal`. No Go toolchain in the image — the result is a clean runtime image with a shell for debugging.
 
-### Quick Start
+The Jenkinsfile at `single-stage/Jenkinsfile` handles the full flow:
+1. **Checkout** — `checkout scm` (source committed to git)
+2. **Build** — compiles the binary on the Jenkins agent using `GOPROXY`
+3. **Build Image** — calls shared library to build the Docker image
+4. **Push Image** — calls shared library to push to registry
 
-```bash
-# 1. Download source
-./air-gapped/scripts/download-source.sh --version 0.19.1
-
-# 2. Build (single-stage, deps from proxy)
-./single-stage/scripts/build.sh --version 0.19.1 \
-  --goproxy https://nexus.internal/repository/go-proxy/
-
-# With proxy authentication:
-./single-stage/scripts/build.sh --version 0.19.1 \
-  --goproxy https://nexus.internal/repository/go-proxy/ \
-  --netrc ~/.netrc
-```
-
-### build.sh (single-stage)
-
-| Flag | Default | Description |
-|---|---|---|
-| `--goproxy <url>` | (required) | Internal Go proxy URL |
-| `--netrc <path>` | none | `.netrc` file for proxy authentication |
-| `--version <ver>` | `0.19.1` | Version to embed in the binary and image labels |
-| `--arch <arch>` | `amd64` | Target architecture: `amd64` or `arm64` |
-| `--registry <url>` | none | Registry prefix for tagging |
-| `--push` | off | Push the image after build |
-| `--scan` | off | Run a Trivy CVE scan after build |
-| `--no-cache` | off | Force Docker to re-pull base images |
-| `--image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Base image |
+The Dockerfile at `single-stage/Dockerfile` expects the `postgres_exporter` binary in the build context — it just copies it in, adds ca-certificates, and creates the runtime user.
 
 ---
 
@@ -241,10 +217,9 @@ All build modes support overriding the base image URLs:
   --builder-image nexus.internal/ubi9/ubi-minimal:latest \
   --runtime-image nexus.internal/ubi9/ubi-micro:latest
 
-# Single-Stage
-./single-stage/scripts/build.sh --version 0.19.1 \
-  --goproxy https://nexus.internal/repository/go-proxy/ \
-  --image nexus.internal/ubi9/ubi-minimal:latest
+# Single-Stage (override in Jenkinsfile or docker build --build-arg)
+# docker build --build-arg UBI_MINIMAL_IMAGE=nexus.internal/ubi9/ubi-minimal:latest \
+#   -f single-stage/Dockerfile .
 ```
 
 ## Run
