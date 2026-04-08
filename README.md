@@ -1,6 +1,6 @@
-# postgres_exporter — UBI 9 Air-Gap Build
+# postgres_exporter — UBI 9 Container Build
 
-Prometheus exporter for PostgreSQL, packaged as a minimal container image on Red Hat UBI 9. Designed for offline/air-gapped CI builds targeting OpenShift 4.x (`restricted-v2` SCC).
+Prometheus exporter for PostgreSQL, packaged as a minimal container image on Red Hat UBI 9. Two build modes are provided for different infrastructure environments.
 
 | Property | Value |
 |---|---|
@@ -11,47 +11,66 @@ Prometheus exporter for PostgreSQL, packaged as a minimal container image on Red
 | Binary | Fully static (`CGO_ENABLED=0`) |
 | Runtime user | `65534:0` (OpenShift arbitrary-UID compatible) |
 
+## Which Build Mode?
+
+| | Air-Gapped | GoProxy |
+|---|---|---|
+| **Use when** | CI has no internet access | CI has access to internal Go proxy |
+| **Vendoring step** | Required (`vendor-deps.sh`) | Not needed |
+| **`src/vendor/` in git** | Yes (~15-20 MB) | No |
+| **Build reproducibility** | Exact (pinned in vendor) | Depends on proxy cache |
+| **Setup complexity** | Higher (vendor + commit) | Lower (download + build) |
+
 ## Repository Structure
 
 ```
 .
-├── Dockerfile                  # Multi-stage build (builder + runtime)
-├── .dockerignore
-├── scripts/
-│   ├── download-source.sh      # Downloads upstream source (needs internet)
-│   ├── vendor-deps.sh          # Vendors Go dependencies in container (needs docker)
-│   └── build.sh                # Builds the Docker image (offline)
-└── src/                        # Vendored source — committed to git
-    ├── go.mod / go.sum
-    ├── cmd/postgres_exporter/
-    └── vendor/                 # Go dependencies (go mod vendor output)
+├── air-gapped/                       # Fully offline builds
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   └── scripts/
+│       ├── download-source.sh        # Downloads upstream source
+│       ├── vendor-deps.sh            # Vendors Go deps in container
+│       └── build.sh                  # Builds image from vendored src/
+│
+├── goproxy/                          # Builds via internal Go proxy
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   └── scripts/
+│       └── build.sh                  # Builds image, deps fetched via GOPROXY
+│
+├── docs/
+│   └── build-pipeline.md            # Detailed pipeline documentation
+└── README.md
 ```
 
-## How It Works
+---
 
-The build is split into two phases to separate internet-facing preparation from offline CI builds:
+## Air-Gapped Build
 
-```
-Developer workstation (internet)         Internal CI (air-gapped)
-─────────────────────────────────        ────────────────────────────
-1. download-source.sh                   git clone / pull
-2. vendor-deps.sh                       build.sh --version 0.19.1
-3. git add src/ && git commit && push   → produces container image
-```
+For environments where CI has no internet access. Dependencies are vendored locally and committed to git.
 
-The developer downloads source and vendors dependencies once. After committing `src/` to git, the air-gapped CI pipeline only needs Docker to build the image — no internet, no Go, no curl.
-
-## Quick Start
-
-### Step 1: Download source (requires internet)
+### Quick Start
 
 ```bash
-./scripts/download-source.sh --version 0.19.1
+# 1. Download source (requires internet)
+./air-gapped/scripts/download-source.sh --version 0.19.1
+
+# 2. Vendor Go dependencies (requires docker/podman)
+./air-gapped/scripts/vendor-deps.sh
+
+# 3. Commit and push to internal git repository
+git add src/
+git commit -m "vendor: postgres_exporter v0.19.1"
+git push
+
+# 4. Build the image (no internet needed)
+./air-gapped/scripts/build.sh --version 0.19.1
 ```
 
-Downloads the postgres_exporter source tarball from GitHub, verifies SHA-256 if available, and extracts it into `src/`.
+### download-source.sh
 
-Prerequisites: `bash`, `curl`, `tar`
+Downloads and extracts the upstream source tarball. Prerequisites: `bash`, `curl`, `tar`
 
 | Flag | Default | Description |
 |---|---|---|
@@ -59,104 +78,65 @@ Prerequisites: `bash`, `curl`, `tar`
 | `--src-dir <path>` | `./src` | Where to extract the source |
 | `--keep-existing` | off | Don't wipe `src/` before extracting |
 
-### Step 2: Vendor Go dependencies (requires Docker)
+### vendor-deps.sh
 
-```bash
-./scripts/vendor-deps.sh
-```
-
-Runs `go mod vendor` inside a UBI9 container to bundle all Go dependencies into `src/vendor/`. Also verifies the vendor directory compiles successfully.
-
-Prerequisites: `bash`, `docker` or `podman` (no Go installation needed)
+Vendors Go dependencies inside a UBI9 container. Prerequisites: `bash`, `docker` or `podman`
 
 | Flag | Default | Description |
 |---|---|---|
 | `--src-dir <path>` | `./src` | Source directory containing `go.mod` |
 | `--image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Container image for vendoring |
-| `--goproxy <url>` | `https://proxy.golang.org,direct` | Go module proxy URL (also reads `GOPROXY` env var) |
-| `--netrc <path>` | none | Mount a `.netrc` file for proxy authentication |
+| `--goproxy <url>` | `https://proxy.golang.org,direct` | Go module proxy URL |
+| `--netrc <path>` | none | `.netrc` file for proxy authentication |
 
-### Step 3: Commit and push
+### build.sh (air-gapped)
 
-```bash
-git add src/
-git commit -m "vendor: postgres_exporter v0.19.1"
-git push   # to internal git repository
-```
-
-> **Note:** `src/vendor/` adds ~15-20 MB to the repository. This is the
-> expected trade-off for fully reproducible, offline builds.
-
-### Step 4: Build the image (offline)
-
-On the air-gapped CI or locally — no internet access needed:
-
-```bash
-./scripts/build.sh --version 0.19.1
-```
-
-Produces: `postgres-exporter:0.19.1-ubi9-amd64`
+Builds the container image from vendored source. Prerequisites: `bash`, `docker` or `podman`
 
 | Flag | Default | Description |
 |---|---|---|
 | `--version <ver>` | `0.19.1` | Version to embed in the binary and image labels |
 | `--arch <arch>` | `amd64` | Target architecture: `amd64` or `arm64` |
-| `--registry <url>` | none | Registry prefix for tagging (e.g. `quay.io/myorg`) |
-| `--push` | off | Push the image after build (requires `--registry`) |
+| `--registry <url>` | none | Registry prefix for tagging |
+| `--push` | off | Push the image after build |
 | `--scan` | off | Run a Trivy CVE scan after build |
 | `--no-cache` | off | Force Docker to re-pull base images |
-| `--file <path>` | `Dockerfile` | Path to an alternative Dockerfile |
-| `--builder-image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Builder stage image (compiles the binary) |
-| `--runtime-image <ref>` | `registry.access.redhat.com/ubi9/ubi-micro:latest` | Runtime stage base image |
+| `--builder-image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Builder stage image |
+| `--runtime-image <ref>` | `registry.access.redhat.com/ubi9/ubi-micro:latest` | Runtime stage image |
 
-### Step 5: Run
-
-```bash
-docker run --rm -e DATA_SOURCE_NAME="postgresql://user:pass@host:5432/db?sslmode=disable" \
-  -p 9187:9187 postgres-exporter:0.19.1-ubi9-amd64
-```
-
-Metrics are available at `http://localhost:9187/metrics`.
-
-## Upgrading
+### Upgrading (air-gapped)
 
 ```bash
-./scripts/download-source.sh --version 0.20.0
-./scripts/vendor-deps.sh
+./air-gapped/scripts/download-source.sh --version 0.20.0
+./air-gapped/scripts/vendor-deps.sh
 git add src/
 git commit -m "vendor: upgrade postgres_exporter to v0.20.0"
 git push
-
-# On CI or locally:
-./scripts/build.sh --version 0.20.0
+./air-gapped/scripts/build.sh --version 0.20.0
 ```
 
-## Using an Internal Registry
+---
 
-If your organization mirrors container images and Go modules to an internal registry (e.g. Nexus, Artifactory), override the defaults:
+## GoProxy Build
 
-### Container images
+For environments with an internal Go proxy (e.g. Nexus, Artifactory). Dependencies are downloaded at build time — no vendoring needed.
 
-```bash
-# Vendor using a mirrored UBI9 image
-./scripts/vendor-deps.sh --image nexus.internal/ubi9/ubi-minimal:latest
-
-# Build using mirrored base images
-./scripts/build.sh --version 0.19.1 \
-  --builder-image nexus.internal/ubi9/ubi-minimal:latest \
-  --runtime-image nexus.internal/ubi9/ubi-micro:latest
-```
-
-### Go module proxy
-
-If your organization runs an internal Go proxy (e.g. Nexus Go proxy repository), use `--goproxy` to download Go modules through it instead of the public `proxy.golang.org`:
+### Quick Start
 
 ```bash
-./scripts/vendor-deps.sh \
+# 1. Download source (requires internet)
+./air-gapped/scripts/download-source.sh --version 0.19.1
+
+# 2. Build the image (deps fetched from internal proxy)
+./goproxy/scripts/build.sh --version 0.19.1 \
   --goproxy https://nexus.internal/repository/go-proxy/
 ```
 
-If the proxy requires authentication, create a `~/.netrc` file:
+No `vendor-deps.sh`, no `src/vendor/` in git, no committing source.
+
+### With proxy authentication
+
+If the Go proxy requires credentials, create a `~/.netrc` file:
 
 ```
 machine nexus.internal
@@ -167,26 +147,63 @@ password your-password
 Then pass it with `--netrc`:
 
 ```bash
-./scripts/vendor-deps.sh \
+./goproxy/scripts/build.sh --version 0.19.1 \
   --goproxy https://nexus.internal/repository/go-proxy/ \
   --netrc ~/.netrc
 ```
 
-> **Note:** The Go proxy is only used during vendoring (step 2). The Dockerfile
-> keeps `GOPROXY=off` so that all builds remain fully offline after `src/vendor/`
-> is committed.
+Credentials are mounted as a BuildKit secret during build only — they are never written into image layers.
 
-All scripts default to `registry.access.redhat.com/...` when no override is provided.
+### build.sh (goproxy)
 
-## Re-Vendoring (after patching go.mod)
+| Flag | Default | Description |
+|---|---|---|
+| `--goproxy <url>` | (required) | Internal Go proxy URL |
+| `--netrc <path>` | none | `.netrc` file for proxy authentication |
+| `--version <ver>` | `0.19.1` | Version to embed in the binary and image labels |
+| `--arch <arch>` | `amd64` | Target architecture: `amd64` or `arm64` |
+| `--registry <url>` | none | Registry prefix for tagging |
+| `--push` | off | Push the image after build |
+| `--scan` | off | Run a Trivy CVE scan after build |
+| `--no-cache` | off | Force Docker to re-pull base images |
+| `--builder-image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Builder stage image |
+| `--runtime-image <ref>` | `registry.access.redhat.com/ubi9/ubi-micro:latest` | Runtime stage image |
 
-If you edit `src/go.mod` directly (e.g. to pin a dependency), re-vendor without re-downloading:
+### Upgrading (goproxy)
 
 ```bash
-./scripts/vendor-deps.sh
-git add src/
-git commit -m "vendor: re-vendor after go.mod change"
+./air-gapped/scripts/download-source.sh --version 0.20.0
+./goproxy/scripts/build.sh --version 0.20.0 \
+  --goproxy https://nexus.internal/repository/go-proxy/
 ```
+
+---
+
+## Using an Internal Container Registry
+
+Both build modes support overriding the base image URLs:
+
+```bash
+# Air-gapped
+./air-gapped/scripts/build.sh --version 0.19.1 \
+  --builder-image nexus.internal/ubi9/ubi-minimal:latest \
+  --runtime-image nexus.internal/ubi9/ubi-micro:latest
+
+# GoProxy
+./goproxy/scripts/build.sh --version 0.19.1 \
+  --goproxy https://nexus.internal/repository/go-proxy/ \
+  --builder-image nexus.internal/ubi9/ubi-minimal:latest \
+  --runtime-image nexus.internal/ubi9/ubi-micro:latest
+```
+
+## Run
+
+```bash
+docker run --rm -e DATA_SOURCE_NAME="postgresql://user:pass@host:5432/db?sslmode=disable" \
+  -p 9187:9187 postgres-exporter:0.19.1-ubi9-amd64
+```
+
+Metrics are available at `http://localhost:9187/metrics`.
 
 ## Environment Variables
 
@@ -217,5 +234,6 @@ The image does not include a Docker `HEALTHCHECK`. On Kubernetes/OpenShift, conf
 
 - Runs as non-root (`USER 65534:0`), compatible with OpenShift `restricted-v2` SCC
 - Runtime image has no shell, no package manager — minimal attack surface
-- `GOPROXY=off` enforced at build time — no network calls possible during compilation
-- All Go dependencies vendored and auditable in `src/vendor/`
+- Air-gapped: `GOPROXY=off` enforced at build time — zero network calls during compilation
+- GoProxy: credentials mounted as BuildKit secrets — never baked into image layers
+- All Go dependencies auditable (in `src/vendor/` for air-gapped, via proxy logs for goproxy)
