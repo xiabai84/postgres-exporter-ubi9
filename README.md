@@ -13,13 +13,15 @@ Prometheus exporter for PostgreSQL, packaged as a minimal container image on Red
 
 ## Which Build Mode?
 
-| | Air-Gapped | GoProxy |
-|---|---|---|
-| **Use when** | CI has no internet access | CI has access to internal Go proxy |
-| **Vendoring step** | Required (`vendor-deps.sh`) | Not needed |
-| **`src/vendor/` in git** | Yes (~15-20 MB) | No |
-| **Build reproducibility** | Exact (pinned in vendor) | Depends on proxy cache |
-| **Setup complexity** | Higher (vendor + commit) | Lower (download + build) |
+| | Air-Gapped | GoProxy | Single-Stage |
+|---|---|---|---|
+| **Use when** | CI has no internet | CI has Go proxy access | Same as GoProxy, simpler Dockerfile |
+| **Vendoring step** | Required | Not needed | Not needed |
+| **`src/vendor/` in git** | Yes (~15-20 MB) | No | No |
+| **Build reproducibility** | Exact (pinned) | Depends on proxy | Depends on proxy |
+| **Runtime image** | `ubi-micro` (~38 MB) | `ubi-micro` (~38 MB) | `ubi-minimal` (~413 MB) |
+| **Dockerfile stages** | 2 (multi-stage) | 2 (multi-stage) | 1 (single-stage) |
+| **Shell in runtime** | No | No | Yes (debug-friendly) |
 
 ## Repository Structure
 
@@ -33,11 +35,19 @@ Prometheus exporter for PostgreSQL, packaged as a minimal container image on Red
 │       ├── vendor-deps.sh            # Vendors Go deps in container
 │       └── build.sh                  # Builds image from vendored src/
 │
-├── goproxy/                          # Builds via internal Go proxy
+├── goproxy/                          # Builds via internal Go proxy (multi-stage)
 │   ├── Dockerfile
 │   ├── .dockerignore
+│   ├── Jenkinsfile
 │   └── scripts/
 │       └── build.sh                  # Builds image, deps fetched via GOPROXY
+│
+├── single-stage/                     # Single-stage build on ubi-minimal
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   ├── Jenkinsfile
+│   └── scripts/
+│       └── build.sh                  # Same as goproxy but single-stage
 │
 ├── docs/
 │   └── build-pipeline.md            # Detailed pipeline documentation
@@ -179,9 +189,45 @@ Credentials are mounted as a BuildKit secret during build only — they are neve
 
 ---
 
+## Single-Stage Build
+
+Same as GoProxy but uses a single Dockerfile stage on `ubi-minimal`. The Go toolchain is installed, source compiled, and Go removed — all in one layer. The resulting image is larger (~413 MB vs ~38 MB) but includes a shell for debugging.
+
+### Quick Start
+
+```bash
+# 1. Download source
+./air-gapped/scripts/download-source.sh --version 0.19.1
+
+# 2. Build (single-stage, deps from proxy)
+./single-stage/scripts/build.sh --version 0.19.1 \
+  --goproxy https://nexus.internal/repository/go-proxy/
+
+# With proxy authentication:
+./single-stage/scripts/build.sh --version 0.19.1 \
+  --goproxy https://nexus.internal/repository/go-proxy/ \
+  --netrc ~/.netrc
+```
+
+### build.sh (single-stage)
+
+| Flag | Default | Description |
+|---|---|---|
+| `--goproxy <url>` | (required) | Internal Go proxy URL |
+| `--netrc <path>` | none | `.netrc` file for proxy authentication |
+| `--version <ver>` | `0.19.1` | Version to embed in the binary and image labels |
+| `--arch <arch>` | `amd64` | Target architecture: `amd64` or `arm64` |
+| `--registry <url>` | none | Registry prefix for tagging |
+| `--push` | off | Push the image after build |
+| `--scan` | off | Run a Trivy CVE scan after build |
+| `--no-cache` | off | Force Docker to re-pull base images |
+| `--image <ref>` | `registry.access.redhat.com/ubi9/ubi-minimal:latest` | Base image |
+
+---
+
 ## Using an Internal Container Registry
 
-Both build modes support overriding the base image URLs:
+All build modes support overriding the base image URLs:
 
 ```bash
 # Air-gapped
@@ -194,6 +240,11 @@ Both build modes support overriding the base image URLs:
   --goproxy https://nexus.internal/repository/go-proxy/ \
   --builder-image nexus.internal/ubi9/ubi-minimal:latest \
   --runtime-image nexus.internal/ubi9/ubi-micro:latest
+
+# Single-Stage
+./single-stage/scripts/build.sh --version 0.19.1 \
+  --goproxy https://nexus.internal/repository/go-proxy/ \
+  --image nexus.internal/ubi9/ubi-minimal:latest
 ```
 
 ## Run

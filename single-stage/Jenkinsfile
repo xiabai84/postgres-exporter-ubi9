@@ -1,0 +1,75 @@
+pipeline {
+    agent { label 'cing-go' }
+
+    environment {
+        APP              = 'postgres-exporter'
+        NEXUS_URL        = 'https://nexus.internal'
+        NEXUS_REPOSITORY = 'internet-go-proxy.golang.org-proxy'
+        VERSION          = '0.19.1'
+        GOPROXY          = "${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Download Source') {
+            steps {
+                sh "./air-gapped/scripts/download-source.sh --version ${VERSION}"
+            }
+        }
+
+        stage('Build Image') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'nexus-credentials',
+                    usernameVariable: 'NEXUS_USER',
+                    passwordVariable: 'NEXUS_PASS'
+                )]) {
+                    sh '''
+                        NETRC_FILE=$(mktemp)
+                        trap "rm -f ${NETRC_FILE}" EXIT
+
+                        cat > "${NETRC_FILE}" <<EOF
+machine nexus.internal
+login ${NEXUS_USER}
+password ${NEXUS_PASS}
+EOF
+
+                        ./single-stage/scripts/build.sh \
+                            --version ${VERSION} \
+                            --goproxy ${GOPROXY} \
+                            --netrc "${NETRC_FILE}"
+                    '''
+                }
+            }
+        }
+
+        stage('Push Image') {
+            steps {
+                // TODO: Replace with your internal container registry URL and credentials
+                sh '''
+                    echo "Pushing image to internal registry ..."
+                    # docker tag ${APP}:${VERSION}-ubi9-amd64 registry.internal/${APP}:${VERSION}-ubi9
+                    # docker push registry.internal/${APP}:${VERSION}-ubi9
+                    echo "Push skipped — uncomment the lines above and configure your registry"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Build successful: ${APP}:${VERSION}-ubi9-amd64"
+        }
+        failure {
+            echo "Build failed — check stage logs for details"
+        }
+        always {
+            sh 'rm -rf src/'
+        }
+    }
+}
