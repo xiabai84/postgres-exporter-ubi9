@@ -16,7 +16,7 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build Image') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'nexus-credentials',
@@ -32,37 +32,13 @@ machine nexus.internal
 login ${NEXUS_USER}
 password ${NEXUS_PASS}
 EOF
-                        export GONETRC="${NETRC_FILE}"
-                        export GOPROXY="${GOPROXY}"
 
-                        cd src
-                        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-                            go build \
-                                -trimpath \
-                                -ldflags="-s -w \
-                                    -X github.com/prometheus/common/version.Version=${VERSION} \
-                                    -X github.com/prometheus/common/version.Branch=release \
-                                    -X github.com/prometheus/common/version.BuildUser=jenkins \
-                                    -X github.com/prometheus/common/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                                -o ../postgres_exporter \
-                                ./cmd/postgres_exporter
-
-                        ../postgres_exporter --version
+                        ./goproxy/scripts/build.sh \
+                            --version ${VERSION} \
+                            --goproxy ${GOPROXY} \
+                            --netrc "${NETRC_FILE}"
                     '''
                 }
-            }
-        }
-
-        stage('Build Image') {
-            steps {
-                // TODO: Replace with your shared library call, e.g.:
-                // buildDockerImage(
-                //     app: APP,
-                //     version: VERSION,
-                //     artifact: 'postgres_exporter',
-                //     dockerfile: 'goproxy/Dockerfile',
-                // )
-                echo "Build image skipped — integrate your shared library here"
             }
         }
 
@@ -81,13 +57,10 @@ EOF
 
     post {
         success {
-            echo "Build successful: ${APP} v${VERSION}"
+            echo "Build successful: ${APP}:${VERSION}-ubi9-amd64"
         }
         failure {
             echo "Build failed — check stage logs for details"
-        }
-        always {
-            sh 'rm -f postgres_exporter'
         }
     }
 }
